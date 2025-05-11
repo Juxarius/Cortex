@@ -11,7 +11,6 @@ def update_locations() -> None:
     with open(WORLD_TXT_FILE_PATH, 'r') as f:
         lines = f.readlines()
         locations = [line.split(":")[-1].strip() for line in lines]
-        [print(l) for l in locations if contains_digits(l)]
         locations = sorted(set(l for l in locations if l != '' and not contains_digits(l)))
     with open(CHOICES_FILE_PATH, 'r') as f:
         choices = json.load(f)
