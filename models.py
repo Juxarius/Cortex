@@ -16,6 +16,8 @@ class Reminder(BaseModel):
     time_unlocked: datetime
     submitter: str
     time_submitted: datetime
+    pingChannelId: int
+    roleMention: str
 
 class Reminders(AbstractRepository[Reminder]):
     class Meta:

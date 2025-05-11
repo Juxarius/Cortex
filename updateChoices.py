@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 
 CHOICES_FILE_PATH = Path(__file__).parent / 'choices.json'
-WORLD_TXT_FILE_PATH = r"D:\Coding Projects\ao-bin-dumps\formatted\world.txt"
+WORLD_TXT_FILE_PATH = r""
 
 def contains_digits(s: str) -> bool:
     return any(char.isdigit() for char in s)
