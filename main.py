@@ -33,7 +33,7 @@ async def check_mongo_updates():
     pending_reminders = sorted(list(REMINDERS.find_by(query)), key=lambda x: x.time_unlocked)
     for reminder in pending_reminders:
         msg = [
-            f"{reminder.roleMention} {reminder.objective} in {reminder.location} in {time_left_to_str(reminder.time_unlocked)}",
+            f"{reminder.roleMention} {reminder.objective} in {reminder.location} in <t:{int(reminder.time_unlocked.timestamp())}:R>",
             f"- Submitted by {reminder.submitter} at {reminder.time_submitted.strftime('%H:%M UTC (%d/%m/%Y)')}"
         ]
         await bot.get_channel(reminder.pingChannelId).send('\n'.join(msg))
