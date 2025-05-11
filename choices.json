@@ -1,0 +1,6 @@
+{
+    "colours": ["Green", "Blue", "Purple", "Gold"],
+    "locations": ["Meltwater Marsh", "Everwinter Incline"],
+    "objectives": ["Small Chest", "Medium Chest", "Large Chest", "Smugglers Wagon"],
+    "resources": ["Wood", "Stone", "Fiber", "Ore", "Hide"]
+}
