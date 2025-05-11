@@ -23,9 +23,8 @@ REMINDERS = Reminders(database=db)
 def utc_now():
     return dt.datetime.now(dt.timezone.utc)
 
-def time_left_to_str(t: datetime) -> str:
-    min, s = divmod((t.replace(tzinfo=dt.timezone.utc) - utc_now()).total_seconds(), 60)
-    return f"{int(min)}min {int(s)}s"
+def make_dc_time(dt: dt.datetime):
+    return f"<t:{int(dt.timestamp())}:R>"
 
 @tasks.loop(seconds=config['dbPollingIntervalSeconds'])
 async def check_mongo_updates():
@@ -33,7 +32,7 @@ async def check_mongo_updates():
     pending_reminders = sorted(list(REMINDERS.find_by(query)), key=lambda x: x.time_unlocked)
     for reminder in pending_reminders:
         msg = [
-            f"{reminder.roleMention} {reminder.objective} in {reminder.location} in <t:{int(reminder.time_unlocked.timestamp())}:R>",
+            f"{reminder.roleMention} {reminder.objective} in {reminder.location} in {make_dc_time(reminder.time_unlocked)}",
             f"- Submitted by {reminder.submitter} at {reminder.time_submitted.strftime('%H:%M UTC (%d/%m/%Y)')}"
         ]
         await bot.get_channel(reminder.pingChannelId).send('\n'.join(msg))
@@ -62,7 +61,7 @@ async def set_core_reminder(
         roleMention=server_data['roleMention']
     )
     REMINDERS.save(reminder)
-    await ctx.respond(f"New reminder set: {reminder.objective} at {location} at {reminder.time_unlocked.strftime('%H:%M UTC (%d/%m/%Y)')} ({hours}h {minutes}m {seconds}s)")
+    await ctx.respond(f"New reminder set: {reminder.objective} at {location} in {make_dc_time(reminder.time_unlocked)}")
 
 @bot.slash_command(name="vortex", description="Set a ping timer for a vortex")
 async def set_vortex_reminder(
@@ -87,7 +86,7 @@ async def set_vortex_reminder(
         roleMention=server_data['roleMention']
     )
     REMINDERS.save(reminder)
-    await ctx.respond(f"New reminder set: {reminder.objective} at {location} at {reminder.time_unlocked.strftime('%H:%M UTC (%d/%m/%Y)')} ({hours}h {minutes}m {seconds}s)")
+    await ctx.respond(f"New reminder set: {reminder.objective} at {location} in {make_dc_time(reminder.time_unlocked)}")
 
 @bot.slash_command(name="remind", description="Set a ping timer")
 async def set_free_reminder(
@@ -112,7 +111,7 @@ async def set_free_reminder(
         roleMention=server_data['roleMention']
     )
     REMINDERS.save(reminder)
-    await ctx.respond(f"New reminder set: {reminder.objective} at {location} at {reminder.time_unlocked.strftime('%H:%M UTC (%d/%m/%Y)')} ({hours}h {minutes}m {seconds}s)")
+    await ctx.respond(f"New reminder set: {reminder.objective} at {location} in {make_dc_time(reminder.time_unlocked)}")
 
 @bot.slash_command(name="help", description="Learn more about the commands")
 async def help(ctx: discord.ApplicationContext):
