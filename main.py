@@ -175,7 +175,13 @@ async def depo(
 
 @bot.slash_command(name="delete", description="Delete a reminder")
 async def delete(ctx: discord.ApplicationContext):
-    user_reminders = list(REMINDERS.find_by({"submitter": ctx.author.mention}))
+    if ctx.author.id == 279919612299182080:
+        user_reminders = list(REMINDERS.find_by({}))
+    else:
+        user_reminders = list(REMINDERS.find_by({"submitter": ctx.author.mention}))
+    if not user_reminders:
+        await ctx.respond("No reminders available to you...", ephemeral=True)
+        return
     view = View()
     select = Select(
         placeholder="Choose reminder to delete...",
