@@ -199,7 +199,7 @@ async def roads(
     ctx: discord.ApplicationContext,
     from_map: Option(str, required=True),
     to_map: Option(str, required=True),
-    portal_type: Option(str, choices=("Gold", "Blue"), default="Blue"),
+    portal_type: Option(str, choices=("Gold", "Blue")),
     hours: Option(int, required=True, min_value=0, max_value=24),
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
