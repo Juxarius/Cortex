@@ -144,6 +144,9 @@ async def submit_reminder(ctx: discord.ApplicationContext, reminder: Reminder):
 async def upcoming(ctx: discord.ApplicationContext):
     # sorted by time_to_ping
     pending_reminders = REMINDERS.find_by({}, sort=[("time_to_ping", 1)])
+    if not pending_reminders:
+        await ctx.respond("No upcoming reminders", ephemeral=True)
+        return
     msg = [
         f"{reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)}"
     for reminder in pending_reminders]
