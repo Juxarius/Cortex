@@ -68,13 +68,16 @@ def get_portals_edge_map() -> list:
             graph[map2][map1] = 0
             # Each portal goes to another map instantly, bidirectional
         for exit_pair in permutations(exits,2):
+            multiplier = 1
+            if "DUNGEON" in cluster.getAttribute('type'):
+                multiplier += 3
             map1, map2 = (exit_pair[0].getAttribute('id'), map_id), (exit_pair[1].getAttribute('id'), map_id)
             map1_pos, map2_pos = extract_pos_floats(exit_pair[0]), extract_pos_floats(exit_pair[1])
             distance = pythagoras(map1_pos, map2_pos)
             if map1 not in graph: graph[map1] = {}
             if map2 not in graph: graph[map2] = {}
-            graph[map1][map2] = distance
-            graph[map2][map1] = distance
+            graph[map1][map2] = distance * multiplier
+            graph[map2][map1] = distance * multiplier
             # Crossing the map has weight
     try:
         with open(ADDITIONAL_EDGES_PATH) as f:
@@ -98,10 +101,13 @@ def get_portal_by_map_id(map_id: str) -> tuple[str, str]:
     for k in PORTALS_EDGE:
         if k[1] == map_id:
             return k
+    return ("ROADS", map_id)
 
 import heapq
-def dijkstra(graph: dict, start: str, end: str):
-    starting_nodes = [key for key in graph.keys() if key[1] == start] 
+def dijkstra(graph: dict, start: str, end: str, additional_graph: dict = None):
+    if additional_graph is None:
+        additional_graph = {}
+    starting_nodes = [key for key in graph if key[1] == start] + [key for key in additional_graph if key[1] == start]
     queue = [(0, node, []) for node in starting_nodes]  # (total_cost, current_node, path)
     visited = set()
     
@@ -112,12 +118,22 @@ def dijkstra(graph: dict, start: str, end: str):
         if node in visited:
             continue
         visited.add(node)
-        for neighbor, weight in graph[node].items():
+        for neighbor, weight in graph.get(node, {}).items():
+            heapq.heappush(queue, (cost + weight, neighbor, path + [node]))
+        for neighbor, weight in additional_graph.get(node, {}).items():
             heapq.heappush(queue, (cost + weight, neighbor, path + [node]))
     return None  # No path exists
 
-def translated_djikstra(map1: str, map2: str) -> list[str]:
-    path = dijkstra(PORTALS_EDGE, MAP_NAME2ID[map1], MAP_NAME2ID[map2])
+def translated_djikstra(map1: str, map2: str, additional_edges: list[str, str] = None) -> list[str]:
+    additional_graph = {}
+    if additional_edges:
+        for from_map_id, to_map_id in additional_edges:
+            portal1, portal2 = get_portal_by_map_id(from_map_id), get_portal_by_map_id(to_map_id)
+            if portal1 not in additional_graph: additional_graph[portal1] = {}
+            if portal2 not in additional_graph: additional_graph[portal2] = {}
+            additional_graph[portal1][portal2] = 0
+            additional_graph[portal2][portal1] = 0
+    path = dijkstra(PORTALS_EDGE, MAP_NAME2ID[map1], MAP_NAME2ID[map2], additional_graph)
     if not path:
         return []
     road = []
@@ -186,3 +202,8 @@ if __name__ == "__main__":
     # make_portals_edge_pickle()
     # make_locations_weight_pickle()
     # show(LOCATIONS_WEIGHT)
+    ag = [
+        (MAP_NAME2ID["Shaleheath Steep"], MAP_NAME2ID["Qiient-Al-Nusom"]),
+        (MAP_NAME2ID["Qiient-Al-Nusom"], MAP_NAME2ID["Fort Sterling"]),
+    ]
+    print(translated_djikstra("Scuttlesink Marsh", "Fort Sterling", ag))

@@ -36,6 +36,9 @@ class Reminders(AbstractRepository[Reminder]):
         collection_name = "reminders"
 
 class Portal(BaseModel):
+    id: Optional[PydanticObjectId] = None
+    from_map: str
+    to_map: str
     from_map_id: str
     to_map_id: str
     time_expire: dt.datetime
@@ -53,3 +56,19 @@ class Portal(BaseModel):
 class Portals(AbstractRepository[Portal]):
     class Meta:
         collection_name = "portals"
+
+if __name__ == '__main__':
+    from main import PORTALS
+    from utils import MAP_NAME2ID
+    p1 = ["Shaleheath Steep", "Qiient-Al-Nusom"]
+    p2 = ["Qiient-Al-Nusom", "Fort Sterling"]
+    for p in [p1, p2]:
+        PORTALS.save(Portal(
+            from_map=p[0], 
+            to_map=p[1], 
+            from_map_id=MAP_NAME2ID[p[0]], 
+            to_map_id=MAP_NAME2ID[p[1]], 
+            time_expire=dt.datetime.now()+dt.timedelta(days=1), 
+            submitter="test", 
+            time_submitted=dt.datetime.now()
+        ))

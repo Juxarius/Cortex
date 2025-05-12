@@ -6,7 +6,7 @@ import datetime as dt
 import json
 
 from models import *
-from utils import best_guess, est_traveling_time_seconds
+from utils import best_guess, est_traveling_time_seconds, translated_djikstra
 
 CONFIG_FILE_PATH = 'config.json'
 with open(CONFIG_FILE_PATH, 'r') as f:
@@ -20,6 +20,7 @@ bot= discord.Bot()
 # MongoDB setup
 db = MongoClient(f"mongodb://{config['mongoDbHostname']}:{config['mongoDbPort']}/")["cortex"]
 REMINDERS = Reminders(database=db)
+PORTALS = Portals(database=db)
 
 def utc_now():
     return dt.datetime.now(dt.timezone.utc)
@@ -138,6 +139,42 @@ async def submit_reminder(ctx: discord.ApplicationContext, reminder: Reminder):
         [REMINDERS.delete(r) for r in existing_reminders]
     REMINDERS.save(reminder)
     await ctx.respond(f"{exist_msg}New reminder set: {reminder.objective} at {reminder.location} {make_dc_time(reminder.time_unlocked)}", ephemeral=True)
+
+@bot.slash_command(name="upcoming", description="List upcoming reminders")
+async def upcoming(ctx: discord.ApplicationContext):
+    # sorted by time_to_ping
+    pending_reminders = REMINDERS.find_by({}, sort=[("time_to_ping", 1)])
+    msg = [
+        f"{reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)}"
+    for reminder in pending_reminders]
+    await ctx.respond("\n".join(msg))
+
+@bot.slash_command(name="route", description="Find the shortest route from one location to another")
+async def route(ctx: discord.ApplicationContext, start: Option(str, required=True), end: Option(str, required=True)):
+    start = best_guess(start)
+    end = best_guess(end)
+    if not start or not end:
+        await ctx.respond("Unable to guess exact map names. Please retry command with full map names", ephemeral=True)
+        return
+    portals: list[Portal] = list(PORTALS.find_by({}))
+    roads = [(portal.from_map_id, portal.to_map_id) for portal in portals]
+    route = translated_djikstra(start, end, roads)
+
+    def find_portal_time(map1: str, map2: str) -> dt.datetime:
+        for portal in portals:
+            if portal.from_map == map1 and portal.to_map == map2:
+                return portal.time_expire
+        return None
+    msg = [f'**{route[0]}**']
+    for idx, step in enumerate(route):
+        if idx == 0: continue
+        time_expire = find_portal_time(route[idx-1], step)
+        if time_expire:
+            msg.append(f"--{make_dc_time(time_expire)}-->")
+        else:
+            msg.append(f"-->")
+        msg.append(f'**{step}**')
+    await ctx.respond('   '.join(msg))
 
 @bot.slash_command(name="help", description="Learn more about the commands")
 async def help(ctx: discord.ApplicationContext):
