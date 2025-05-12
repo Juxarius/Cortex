@@ -6,6 +6,7 @@ import datetime as dt
 import json
 
 from models import *
+from utils import best_guess, est_traveling_time_seconds
 
 CONFIG_FILE_PATH = 'config.json'
 with open(CONFIG_FILE_PATH, 'r') as f:
@@ -28,11 +29,11 @@ def make_dc_time(dt: dt.datetime):
 
 @tasks.loop(seconds=config['dbPollingIntervalSeconds'])
 async def check_mongo_updates():
-    query = {"time_unlocked": {"$lt": utc_now() + timedelta(minutes=config['pingBeforeMinutes'])}}
-    pending_reminders = sorted(list(REMINDERS.find_by(query)), key=lambda x: x.time_unlocked)
+    query = {'time_to_ping': {'$lt': utc_now()}}
+    pending_reminders = REMINDERS.find_by(query)
     for reminder in pending_reminders:
         msg = [
-            f"{reminder.roleMention} {reminder.objective} in {reminder.location} in {make_dc_time(reminder.time_unlocked)}",
+            f"{reminder.roleMention} {reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)}",
             f"- Submitted by {reminder.submitter} at {reminder.time_submitted.strftime('%H:%M UTC (%d/%m/%Y)')}"
         ]
         await bot.get_channel(reminder.pingChannelId).send('\n'.join(msg))
@@ -51,17 +52,22 @@ async def set_core_reminder(
     if not server_data:
         await ctx.respond("This server is not approved to use this command.")
         return
+    location = best_guess(location)
+    if not location:
+        await ctx.respond("Unable to guess exact map name. Please retry command", ephemeral=True)
+        return
+    lead_time = int(est_traveling_time_seconds(location)) + config['reminderLeadTimeSeconds']
     reminder = Reminder(
         objective=f"{color} Core",
         location=location,
-        time_unlocked=utc_now() + timedelta(hours=hours, minutes=minutes, seconds=seconds),
+        time_unlocked=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds),
         submitter=ctx.author.mention,
         time_submitted=utc_now(),
         pingChannelId=server_data['pingChannelId'],
-        roleMention=server_data['roleMention']
+        roleMention=server_data['roleMention'],
+        time_to_ping=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds-lead_time),
     )
-    REMINDERS.save(reminder)
-    await ctx.respond(f"New reminder set: {reminder.objective} at {location} in {make_dc_time(reminder.time_unlocked)}")
+    await submit_reminder(ctx, reminder)
 
 @bot.slash_command(name="vortex", description="Set a ping timer for a vortex")
 async def set_vortex_reminder(
@@ -76,17 +82,22 @@ async def set_vortex_reminder(
     if not server_data:
         await ctx.respond("This server is not approved to use this command.")
         return
+    location = best_guess(location)
+    if not location:
+        await ctx.respond("Unable to guess exact map name. Please retry command", ephemeral=True)
+        return
+    lead_time = int(est_traveling_time_seconds(location)) + config['reminderLeadTimeSeconds']
     reminder = Reminder(
         objective=f"{color} Vortex",
         location=location,
-        time_unlocked=utc_now() + timedelta(hours=hours, minutes=minutes, seconds=seconds),
+        time_unlocked=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds),
         submitter=ctx.author.mention,
         time_submitted=utc_now(),
         pingChannelId=server_data['pingChannelId'],
-        roleMention=server_data['roleMention']
+        roleMention=server_data['roleMention'],
+        time_to_ping=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds-lead_time),
     )
-    REMINDERS.save(reminder)
-    await ctx.respond(f"New reminder set: {reminder.objective} at {location} in {make_dc_time(reminder.time_unlocked)}")
+    await submit_reminder(ctx, reminder)
 
 @bot.slash_command(name="remind", description="Set a ping timer")
 async def set_free_reminder(
@@ -101,17 +112,32 @@ async def set_free_reminder(
     if not server_data:
         await ctx.respond("This server is not approved to use this command.")
         return
+    guess = best_guess(location)
+    lead_time = config['reminderLeadTimeSeconds']
+    if guess:
+        location = guess
+        lead_time += int(est_traveling_time_seconds(location))
     reminder = Reminder(
         objective=reminder_text,
         location=location,
-        time_unlocked=utc_now() + timedelta(hours=hours, minutes=minutes, seconds=seconds),
+        time_unlocked=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds),
         submitter=ctx.author.mention,
         time_submitted=utc_now(),
         pingChannelId=server_data['pingChannelId'],
-        roleMention=server_data['roleMention']
+        roleMention=server_data['roleMention'],
+        time_to_ping=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds-lead_time),
     )
+    await submit_reminder(ctx, reminder)
+
+async def submit_reminder(ctx: discord.ApplicationContext, reminder: Reminder):
+    existing_reminders = list(REMINDERS.find_by({"objective": reminder.objective, "location": reminder.location}))
+    # How far apart are the reminders before being considered duplicates
+    exist_msg = ""
+    if existing_reminders:
+        exist_msg = "Reminder already exists, updated reminder!\n"
+        [REMINDERS.delete(r) for r in existing_reminders]
     REMINDERS.save(reminder)
-    await ctx.respond(f"New reminder set: {reminder.objective} at {location} in {make_dc_time(reminder.time_unlocked)}")
+    await ctx.respond(f"{exist_msg}New reminder set: {reminder.objective} at {reminder.location} {make_dc_time(reminder.time_unlocked)}", ephemeral=True)
 
 @bot.slash_command(name="help", description="Learn more about the commands")
 async def help(ctx: discord.ApplicationContext):
@@ -121,7 +147,7 @@ async def help(ctx: discord.ApplicationContext):
         "**/vortex <color> <location> <hours> <minutes> <seconds>**",
         "**/remind <reminder text> <location> <hours> <minutes> <seconds>**",
     ]
-    await ctx.respond("\n".join(msg))
+    await ctx.respond("\n".join(msg), ephemeral=True)
 
 @bot.event
 async def on_ready():

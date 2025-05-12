@@ -1,8 +1,7 @@
 from pydantic_mongo import AbstractRepository, PydanticObjectId
-from pydantic import BaseModel, Field
-from pymongo import MongoClient
-from typing import Optional, List, Self
-from datetime import datetime, timedelta
+from pydantic import BaseModel, field_validator
+from typing import Optional
+import datetime as dt
 from enum import Enum
 
 class ReminderStatus(str, Enum):
@@ -13,11 +12,24 @@ class Reminder(BaseModel):
     id: Optional[PydanticObjectId] = None
     objective: str
     location: str
-    time_unlocked: datetime
+    time_unlocked: dt.datetime
     submitter: str
-    time_submitted: datetime
+    time_submitted: dt.datetime
     pingChannelId: int
     roleMention: str
+    time_to_ping: dt.datetime
+
+    @field_validator("time_unlocked")
+    def unlock_timezone(cls, v: dt.datetime) -> dt.datetime:
+        return v.replace(tzinfo=dt.timezone.utc)
+    
+    @field_validator("time_submitted")
+    def submit_timezone(cls, v: dt.datetime) -> dt.datetime:
+        return v.replace(tzinfo=dt.timezone.utc)
+    
+    @field_validator("time_to_ping")
+    def ping_timezone(cls, v: dt.datetime) -> dt.datetime:
+        return v.replace(tzinfo=dt.timezone.utc)
 
 class Reminders(AbstractRepository[Reminder]):
     class Meta:
