@@ -1,7 +1,9 @@
 import discord
 from discord.commands import Option
 from discord.ext import tasks
+from discord.ui import View, Select
 from pymongo import MongoClient
+from pydantic_mongo import PydanticObjectId
 import datetime as dt
 import json
 
@@ -151,6 +153,58 @@ async def upcoming(ctx: discord.ApplicationContext):
         f"{reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)}"
     for reminder in pending_reminders]
     await ctx.respond("\n".join(msg))
+
+@bot.slash_command(name="depo", description="Set a timer for leechers on depo time, sends immediately")
+async def depo(
+    ctx: discord.ApplicationContext,
+    color: Option(str, choices=COLOUR_CHOICES, required=True),
+    type: Option(str, choices=("Core", "Vortex"), required=True),
+    location: Option(str, required=True),
+    minutes: Option(int, required=True, min_value=0, max_value=59),
+):
+    server_data = config['approvedServers'].get(str(ctx.guild_id), {})
+    if not server_data:
+        await ctx.respond("This server is not approved to use this command.")
+        return
+    location = best_guess(location) or location
+    msg = [
+        f"{server_data['roleMention']} Come leech {color} {type} in {location}", 
+        f"Depo {make_dc_time(utc_now() + dt.timedelta(minutes=minutes))}  -- {ctx.author.mention}",
+    ]
+    await bot.get_channel(int(server_data['pingChannelId'])).send("\n".join(msg))
+
+@bot.slash_command(name="delete", description="Delete a reminder")
+async def delete(ctx: discord.ApplicationContext):
+    user_reminders = list(REMINDERS.find_by({"submitter": ctx.author.mention}))
+    view = View()
+    select = Select(
+        placeholder="Choose reminder to delete...",
+        min_values=1,
+        max_values=1,
+        options=[
+            discord.SelectOption(label=f"{reminder.objective} in {reminder.location}", value=str(reminder.id)) 
+        for reminder in user_reminders],
+    )
+    async def callback(interaction: discord.Interaction):
+        reminder = REMINDERS.find_one_by_id(PydanticObjectId(interaction.data['values'][0]))
+        REMINDERS.delete(reminder)
+        await interaction.response.edit_message(content=f"Deleted Reminder: {reminder.objective} in {reminder.location}", view=None)
+    select.callback = callback
+
+    view.add_item(select)
+    await ctx.respond(view=view,ephemeral=True)
+
+@bot.slash_command(name="roads", description="Add a an ava portal connection")
+async def roads(
+    ctx: discord.ApplicationContext,
+    from_map: Option(str, required=True),
+    to_map: Option(str, required=True),
+    portal_type: Option(str, choices=("Gold", "Blue"), default="Blue"),
+    hours: Option(int, required=True, min_value=0, max_value=24),
+    minutes: Option(int, required=True, min_value=0, max_value=59),
+    seconds: Option(int, default=0, min_value=0, max_value=59),
+):
+    await ctx.respond("Not implemented yet, stay tuned...", ephemeral=True)
 
 @bot.slash_command(name="route", description="Find the shortest route from one location to another")
 async def route(ctx: discord.ApplicationContext, start: Option(str, required=True), end: Option(str, required=True)):
