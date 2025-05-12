@@ -7,11 +7,12 @@ import pickle
 CONFIG_FILE_PATH = Path(__file__).parent / 'config.json'
 BIN_DUMP_ROOT_PATH = Path('D:/Coding Projects/ao-bin-dumps/')
 
-MAP_ID2NAME_PATH = Path(__file__).parent / 'map_id2name.pickle'
-MAP_NAME2ID_PATH = Path(__file__).parent / 'map_name2id.pickle'
+MAP_ID2NAME_PATH = Path(__file__).parent / 'bin-dumps' / 'map_id2name.pickle'
+MAP_NAME2ID_PATH = Path(__file__).parent / 'bin-dumps' / 'map_name2id.pickle'
 
-PORTALS_EDGE_PATH = Path(__file__).parent / 'portals_edge.pickle'
-LOCATIONS_WEIGHT_PATH = Path(__file__).parent / 'locations_weight.pickle'
+PORTALS_EDGE_PATH = Path(__file__).parent / 'bin-dumps' / 'portals_edge.pickle'
+ADDITIONAL_EDGES_PATH = Path(__file__).parent / 'add_portals.json'
+LOCATIONS_WEIGHT_PATH = Path(__file__).parent / 'bin-dumps' / 'locations_weight.pickle'
 
 # General Utils
 with open(CONFIG_FILE_PATH, 'r') as f:
@@ -75,6 +76,15 @@ def get_portals_edge_map() -> list:
             graph[map1][map2] = distance
             graph[map2][map1] = distance
             # Crossing the map has weight
+    try:
+        with open(ADDITIONAL_EDGES_PATH) as f:
+            additional_edges = json.load(f)
+        for edge in additional_edges:
+            portal1, portal2 = get_portal_by_map_id(MAP_NAME2ID[edge[0]]), get_portal_by_map_id(MAP_NAME2ID[edge[1]])
+            graph[portal1][portal2] = edge[2]
+            graph[portal2][portal1] = edge[2]
+    except FileNotFoundError:
+        pass
     return graph
 
 def make_portals_edge_pickle() -> None:
@@ -83,6 +93,11 @@ def make_portals_edge_pickle() -> None:
         pickle.dump(graph, f)
 
 PORTALS_EDGE = load_pickle(PORTALS_EDGE_PATH)
+
+def get_portal_by_map_id(map_id: str) -> tuple[str, str]:
+    for k in PORTALS_EDGE:
+        if k[1] == map_id:
+            return k
 
 import heapq
 def dijkstra(graph: dict, start: str, end: str):

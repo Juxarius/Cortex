@@ -34,3 +34,22 @@ class Reminder(BaseModel):
 class Reminders(AbstractRepository[Reminder]):
     class Meta:
         collection_name = "reminders"
+
+class Portal(BaseModel):
+    from_map_id: str
+    to_map_id: str
+    time_expire: dt.datetime
+    submitter: str
+    time_submitted: dt.datetime
+
+    @field_validator("time_expire")
+    def expire_timezone(cls, v: dt.datetime) -> dt.datetime:
+        return v.replace(tzinfo=dt.timezone.utc)
+    
+    @field_validator("time_submitted")
+    def submit_timezone(cls, v: dt.datetime) -> dt.datetime:
+        return v.replace(tzinfo=dt.timezone.utc)
+
+class Portals(AbstractRepository[Portal]):
+    class Meta:
+        collection_name = "portals"
