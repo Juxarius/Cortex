@@ -167,9 +167,10 @@ async def depo(
         await ctx.respond("This server is not approved to use this command.")
         return
     location = best_guess(location) or location
+    utc_depo_time = utc_now() + dt.timedelta(minutes=minutes)
     msg = [
         f"{server_data['roleMention']} Come leech {color} {type} in {location}", 
-        f"Depo {make_dc_time(utc_now() + dt.timedelta(minutes=minutes))}  -- {ctx.author.mention}",
+        f"Depo {make_dc_time(utc_depo_time)} {utc_depo_time.strftime('%H:%M UTC')}  -- {ctx.author.mention}",
     ]
     await bot.get_channel(int(server_data['pingChannelId'])).send("\n".join(msg))
 
