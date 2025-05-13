@@ -36,7 +36,7 @@ async def check_mongo_updates():
     pending_reminders = REMINDERS.find_by(query)
     for reminder in pending_reminders:
         msg = [
-            f"{reminder.roleMention} {reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)}",
+            f"{reminder.roleMention} {reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)} {reminder.time_unlocked.strftime('%H:%M UTC')}",
             f"- Submitted by {reminder.submitter} at {reminder.time_submitted.strftime('%H:%M UTC (%d/%m/%Y)')}"
         ]
         await bot.get_channel(reminder.pingChannelId).send('\n'.join(msg))
@@ -140,7 +140,7 @@ async def submit_reminder(ctx: discord.ApplicationContext, reminder: Reminder):
         exist_msg = "Reminder already exists, updated reminder!\n"
         [REMINDERS.delete(r) for r in existing_reminders]
     REMINDERS.save(reminder)
-    await ctx.respond(f"{exist_msg}New reminder set: {reminder.objective} at {reminder.location} {make_dc_time(reminder.time_unlocked)}", ephemeral=True)
+    await ctx.respond(f"{exist_msg}New reminder set: {reminder.objective} at {reminder.location} {make_dc_time(reminder.time_unlocked)} {reminder.time_unlocked.strftime('%H:%M UTC')}", ephemeral=True)
 
 @bot.slash_command(name="upcoming", description="List upcoming reminders")
 async def upcoming(ctx: discord.ApplicationContext):
