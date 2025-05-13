@@ -150,7 +150,7 @@ async def upcoming(ctx: discord.ApplicationContext):
         await ctx.respond("No upcoming reminders", ephemeral=True)
         return
     msg = [
-        f"{reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)} {reminder.time_submitted.strftime('%H:%M UTC (%d/%m/%Y)')}"
+        f"{reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)} {reminder.time_unlocked.strftime('%H:%M UTC (%d/%m/%Y)')}"
     for reminder in pending_reminders]
     await ctx.respond("\n".join(msg))
 
