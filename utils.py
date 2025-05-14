@@ -3,6 +3,7 @@ import json
 from xml.dom import minidom
 from itertools import permutations
 import pickle
+import logging
 
 CONFIG_FILE_PATH = Path(__file__).parent / 'config.json'
 BIN_DUMP_ROOT_PATH = Path('D:/Coding Projects/ao-bin-dumps/')
@@ -14,10 +15,27 @@ PORTALS_EDGE_PATH = Path(__file__).parent / 'bin-dumps' / 'portals_edge.pickle'
 ADDITIONAL_EDGES_PATH = Path(__file__).parent / 'add_portals.json'
 LOCATIONS_WEIGHT_PATH = Path(__file__).parent / 'bin-dumps' / 'locations_weight.pickle'
 
-# General Utils
+LOG_FILE_PATH = Path(__file__).parent / 'cortex.log'
+
+# Load config before anything
 with open(CONFIG_FILE_PATH, 'r') as f:
     config = json.load(f)
 
+# Logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+handler = logging.FileHandler(LOG_FILE_PATH, 'a', 'utf-8')
+handler.setLevel(logging.getLevelNamesMapping()[config['logLevel']])
+handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s'))
+logger.addHandler(handler)
+debug = logger.debug
+info = logger.info
+warning = logger.warning
+error = logger.error
+critical = logger.critical
+
+
+# General Utils
 def contains_digits(s: str) -> bool:
     return any(char.isdigit() for char in s)
 
@@ -151,7 +169,7 @@ def get_all_zone_names() -> list[str]:
     return list(filter(lambda s: s and not contains_digits(s), [cluster.getAttribute('displayname') for cluster in all_clusters]))
 
 def get_locations_weight() -> list:
-    return {loc: (len(translated_djikstra(config['homeMap'], loc)) or None) for loc in set(get_all_zone_names())}
+    return {loc: (len(translated_djikstra("Scuttlesink Marsh", loc)) or None) for loc in set(get_all_zone_names())}
 
 def make_locations_weight_pickle() -> None:
     lw = get_locations_weight()
@@ -173,8 +191,11 @@ def best_guesses(s: str) -> list[str, int]:
 
 def best_guess(s: str) -> str:
     try:
-        return best_guesses(s)[0][0]
+        guesses = best_guesses(s)[0]
+        debug(f'Guessed {guesses} from {s}')
+        return guesses[0]
     except IndexError:
+        debug(f'Could not guess {s}')
         return None
 
 def est_traveling_time_seconds(m: str) -> int:

@@ -5,22 +5,19 @@ from discord.ui import View, Select
 from pymongo import MongoClient
 from pydantic_mongo import PydanticObjectId
 import datetime as dt
-import json
 
 from models import *
-from utils import best_guess, est_traveling_time_seconds, translated_djikstra
-
-CONFIG_FILE_PATH = 'config.json'
-with open(CONFIG_FILE_PATH, 'r') as f:
-    config = json.load(f)
+from utils import best_guess, est_traveling_time_seconds, translated_djikstra, config
+from utils import debug, info, warning, error
 
 # Discord does not allow >25 choices
 COLOUR_CHOICES = ["Green", "Blue", "Purple", "Gold"]
 
-bot= discord.Bot()
+bot = discord.Bot()
 
 # MongoDB setup
 db = MongoClient(f"mongodb://{config['mongoDbHostname']}:{config['mongoDbPort']}/")["cortex"]
+debug("Connected to MongoDB")
 REMINDERS = Reminders(database=db)
 PORTALS = Portals(database=db)
 
@@ -34,13 +31,21 @@ def make_dc_time(dt: dt.datetime):
 async def check_mongo_updates():
     query = {'time_to_ping': {'$lt': utc_now()}}
     pending_reminders = REMINDERS.find_by(query)
+    
     for reminder in pending_reminders:
         msg = [
             f"{reminder.roleMention} {reminder.objective} in {reminder.location} {make_dc_time(reminder.time_unlocked)} {reminder.time_unlocked.strftime('%H:%M UTC')}",
             f"- Submitted by {reminder.submitter} at {reminder.time_submitted.strftime('%H:%M UTC (%d/%m/%Y)')}"
         ]
-        await bot.get_channel(reminder.pingChannelId).send('\n'.join(msg))
+        channel = bot.get_channel(reminder.pingChannelId)
+        try:
+            info(f"Pinging {reminder.objective} in {reminder.location} | {reminder.submitter} [{reminder.pingChannelId}]")
+            await channel.send('\n'.join(msg))
+        except Exception as e:
+            error(f"Failed to ping channel {reminder.pingChannelId} | submitted by {reminder.submitter} at {reminder.time_submitted.strftime('%H:%M UTC (%d/%m/%Y)')}")
+            error(e)
         REMINDERS.delete(reminder)
+        debug(f"Deleted {reminder.objective} in {reminder.location}")
 
 @bot.slash_command(name="core", description="Set a ping timer for a core")
 async def set_core_reminder(
@@ -53,12 +58,16 @@ async def set_core_reminder(
 ):
     server_data = config['approvedServers'].get(str(ctx.guild_id), {})
     if not server_data:
+        cmd = f'/core {color} {location} {hours} {minutes} {seconds}'
+        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent {cmd}")
         await ctx.respond("This server is not approved to use this command.")
         return
-    location = best_guess(location)
-    if not location:
+    guess = best_guess(location)
+    if not guess:
+        warning(f"Failed to guess location for {ctx.guild} ({ctx.guild_id}): {location}")
         await ctx.respond("Unable to guess exact map name. Please retry command", ephemeral=True)
         return
+    location = guess
     lead_time = int(est_traveling_time_seconds(location)) + config['reminderLeadTimeSeconds']
     reminder = Reminder(
         objective=f"{color} Core",
@@ -83,12 +92,16 @@ async def set_vortex_reminder(
 ):
     server_data = config['approvedServers'].get(str(ctx.guild_id), {})
     if not server_data:
+        cmd = f'/vortex {color} {location} {hours} {minutes} {seconds}'
+        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent {cmd}")
         await ctx.respond("This server is not approved to use this command.")
         return
-    location = best_guess(location)
-    if not location:
+    guess = best_guess(location)
+    if not guess:
+        warning(f"Failed to guess location for {ctx.guild} ({ctx.guild_id}): {location}")
         await ctx.respond("Unable to guess exact map name. Please retry command", ephemeral=True)
         return
+    location = guess
     lead_time = int(est_traveling_time_seconds(location)) + config['reminderLeadTimeSeconds']
     reminder = Reminder(
         objective=f"{color} Vortex",
@@ -113,6 +126,8 @@ async def set_free_reminder(
 ):
     server_data = config['approvedServers'].get(str(ctx.guild_id), {})
     if not server_data:
+        cmd = f'/remind {reminder_text} {location} {hours} {minutes} {seconds}'
+        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent {cmd}")
         await ctx.respond("This server is not approved to use this command.")
         return
     guess = best_guess(location)
@@ -137,15 +152,24 @@ async def submit_reminder(ctx: discord.ApplicationContext, reminder: Reminder):
     # How far apart are the reminders before being considered duplicates
     exist_msg = ""
     if existing_reminders:
+        info(f'Deleting existing {len(existing_reminders)} reminders for {reminder.objective} in {reminder.location}')
         exist_msg = "Reminder already exists, updated reminder!\n"
         [REMINDERS.delete(r) for r in existing_reminders]
     REMINDERS.save(reminder)
+    server_name = config['approvedServers'][str(ctx.guild_id)]['name']
+    info(f'Saved reminder {reminder.objective} in {reminder.location} | {ctx.author.name} ({ctx.author.id}) from {server_name} ({ctx.guild_id})')
     await ctx.respond(f"{exist_msg}New reminder set: {reminder.objective} at {reminder.location} {make_dc_time(reminder.time_unlocked)} {reminder.time_unlocked.strftime('%H:%M UTC')}", ephemeral=True)
 
 @bot.slash_command(name="upcoming", description="List upcoming reminders")
 async def upcoming(ctx: discord.ApplicationContext):
-    # sorted by time_to_ping
-    pending_reminders = list(REMINDERS.find_by({}, sort=[("time_to_ping", 1)]))
+    server_data = config['approvedServers'].get(str(ctx.guild_id), {})
+    if not server_data:
+        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent /upcoming")
+        await ctx.respond("This server is not approved to use this command.")
+        return
+    server_name = server_data['name']
+    info(f'{ctx.author.name} ({ctx.author.id}) from {server_name} sent /upcoming')
+    pending_reminders = list(REMINDERS.find_by({'pingChannelId': server_data['pingChannelId']}, sort=[("time_to_ping", 1)]))
     if not pending_reminders:
         await ctx.respond("No upcoming reminders", ephemeral=True)
         return
@@ -164,37 +188,43 @@ async def depo(
 ):
     server_data = config['approvedServers'].get(str(ctx.guild_id), {})
     if not server_data:
+        cmd = f'/depo {color} {type} {location} {minutes}'
+        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent {cmd}")
         await ctx.respond("This server is not approved to use this command.")
         return
     location = best_guess(location) or location
+    info(f'{ctx.author.name} ({ctx.author.id}) from {server_data["name"]} sent /depo {color} {type} {location} {minutes}')
     utc_depo_time = utc_now() + dt.timedelta(minutes=minutes)
     msg = [
         f"{server_data['roleMention']} Come leech {color} {type} in {location}", 
         f"Depo {make_dc_time(utc_depo_time)} {utc_depo_time.strftime('%H:%M UTC')}  -- {ctx.author.mention}",
     ]
-    await bot.get_channel(int(server_data['pingChannelId'])).send("\n".join(msg))
+    await bot.get_channel(server_data['pingChannelId']).send("\n".join(msg))
 
 @bot.slash_command(name="delete", description="Delete a reminder")
 async def delete(ctx: discord.ApplicationContext):
-    if ctx.author.id == 279919612299182080:
+    if ctx.author.id == config['juxId']:
         user_reminders = list(REMINDERS.find_by({}))
     else:
         user_reminders = list(REMINDERS.find_by({"submitter": ctx.author.mention}))
+    info(f'{ctx.author.name} ({ctx.author.id}) sent /delete, {len(user_reminders)} reminders available')
     if not user_reminders:
         await ctx.respond("No reminders available to you...", ephemeral=True)
         return
     view = View()
+    options = [
+        discord.SelectOption(label=f"{reminder.objective} in {reminder.location}", value=str(reminder.id)) 
+    for reminder in user_reminders]
     select = Select(
         placeholder="Choose reminder to delete...",
         min_values=1,
         max_values=1,
-        options=[
-            discord.SelectOption(label=f"{reminder.objective} in {reminder.location}", value=str(reminder.id)) 
-        for reminder in user_reminders],
+        options=options,
     )
     async def callback(interaction: discord.Interaction):
         reminder = REMINDERS.find_one_by_id(PydanticObjectId(interaction.data['values'][0]))
         REMINDERS.delete(reminder)
+        info(f'{interaction.user.name} ({interaction.user.id}) deleted {reminder.objective} in {reminder.location}')
         await interaction.response.edit_message(content=f"Deleted Reminder: {reminder.objective} in {reminder.location}", view=None)
     select.callback = callback
 
