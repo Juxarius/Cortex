@@ -1,9 +1,11 @@
+from discord import ApplicationContext
 from pathlib import Path
 import json
 from xml.dom import minidom
 from itertools import permutations
 import pickle
 import logging
+import functools
 
 CONFIG_FILE_PATH = Path(__file__).parent / 'config.json'
 BIN_DUMP_ROOT_PATH = Path('D:/Coding Projects/ao-bin-dumps/')
@@ -48,6 +50,25 @@ def extract_pos_floats(item: minidom.Element) -> tuple[float]:
 def load_pickle(path: Path) -> dict:
     with open(path, 'rb') as f:
         return pickle.load(f)
+
+def ctx_info(ctx: ApplicationContext) -> str:
+    alias = ''
+    if config['approvedServers'].get(str(ctx.guild_id), None) is not None:
+        alias = f' ({config['approvedServers'][str(ctx.guild_id)]['name']})'
+    return f'{ctx.author.name} [{ctx.author.id}] - {ctx.guild}{alias} [{ctx.guild_id}]'
+
+def requires_approved(func):
+    @functools.wraps(func)
+    async def wrapper(ctx: ApplicationContext, *args, **kwargs):
+        server_data = config['approvedServers'].get(str(ctx.guild_id), None)
+        if server_data is None:
+            cmd = f'/{ctx.command} ' + ' '.join(str(v) for v in kwargs.values())
+            warning(f"{ctx_info(ctx)} Unapproved server sent {cmd}")
+            await ctx.respond("This server is not approved to use this command.")
+            return
+        ctx.server_data = server_data
+        return await func(ctx, *args, **kwargs)
+    return wrapper
 
 # Map Utils
 def get_map_id_to_name() -> dict[str, str]:

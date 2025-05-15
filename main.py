@@ -7,7 +7,7 @@ from pydantic_mongo import PydanticObjectId
 import datetime as dt
 
 from models import *
-from utils import best_guess, est_traveling_time_seconds, translated_djikstra, config
+from utils import best_guess, est_traveling_time_seconds, translated_djikstra, config, ctx_info, requires_approved
 from utils import debug, info, warning, error
 
 # Discord does not allow >25 choices
@@ -48,6 +48,7 @@ async def check_mongo_updates():
         debug(f"Deleted {reminder.objective} in {reminder.location}")
 
 @bot.slash_command(name="core", description="Set a ping timer for a core")
+@requires_approved
 async def set_core_reminder(
     ctx: discord.ApplicationContext,
     color: Option(str, choices=COLOUR_CHOICES, required=True),
@@ -56,12 +57,6 @@ async def set_core_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    server_data = config['approvedServers'].get(str(ctx.guild_id), {})
-    if not server_data:
-        cmd = f'/core {color} {location} {hours} {minutes} {seconds}'
-        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent {cmd}")
-        await ctx.respond("This server is not approved to use this command.")
-        return
     guess = best_guess(location)
     if not guess:
         warning(f"Failed to guess location for {ctx.guild} ({ctx.guild_id}): {location}")
@@ -75,13 +70,14 @@ async def set_core_reminder(
         time_unlocked=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds),
         submitter=ctx.author.mention,
         time_submitted=utc_now(),
-        pingChannelId=server_data['pingChannelId'],
-        roleMention=server_data['roleMention'],
+        pingChannelId=ctx.server_data['pingChannelId'],
+        roleMention=ctx.server_data['roleMention'],
         time_to_ping=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds-lead_time),
     )
     await submit_reminder(ctx, reminder)
 
 @bot.slash_command(name="vortex", description="Set a ping timer for a vortex")
+@requires_approved
 async def set_vortex_reminder(
     ctx: discord.ApplicationContext,
     color: Option(str, choices=COLOUR_CHOICES, required=True),
@@ -90,12 +86,6 @@ async def set_vortex_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    server_data = config['approvedServers'].get(str(ctx.guild_id), {})
-    if not server_data:
-        cmd = f'/vortex {color} {location} {hours} {minutes} {seconds}'
-        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent {cmd}")
-        await ctx.respond("This server is not approved to use this command.")
-        return
     guess = best_guess(location)
     if not guess:
         warning(f"Failed to guess location for {ctx.guild} ({ctx.guild_id}): {location}")
@@ -109,13 +99,14 @@ async def set_vortex_reminder(
         time_unlocked=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds),
         submitter=ctx.author.mention,
         time_submitted=utc_now(),
-        pingChannelId=server_data['pingChannelId'],
-        roleMention=server_data['roleMention'],
+        pingChannelId=ctx.server_data['pingChannelId'],
+        roleMention=ctx.server_data['roleMention'],
         time_to_ping=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds-lead_time),
     )
     await submit_reminder(ctx, reminder)
 
 @bot.slash_command(name="remind", description="Set a ping timer")
+@requires_approved
 async def set_free_reminder(
     ctx: discord.ApplicationContext,
     reminder_text: Option(str, required=True),
@@ -124,12 +115,6 @@ async def set_free_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    server_data = config['approvedServers'].get(str(ctx.guild_id), {})
-    if not server_data:
-        cmd = f'/remind {reminder_text} {location} {hours} {minutes} {seconds}'
-        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent {cmd}")
-        await ctx.respond("This server is not approved to use this command.")
-        return
     guess = best_guess(location)
     lead_time = config['reminderLeadTimeSeconds']
     if guess:
@@ -141,8 +126,8 @@ async def set_free_reminder(
         time_unlocked=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds),
         submitter=ctx.author.mention,
         time_submitted=utc_now(),
-        pingChannelId=server_data['pingChannelId'],
-        roleMention=server_data['roleMention'],
+        pingChannelId=ctx.server_data['pingChannelId'],
+        roleMention=ctx.server_data['roleMention'],
         time_to_ping=utc_now() + dt.timedelta(hours=hours, minutes=minutes, seconds=seconds-lead_time),
     )
     await submit_reminder(ctx, reminder)
@@ -156,20 +141,15 @@ async def submit_reminder(ctx: discord.ApplicationContext, reminder: Reminder):
         exist_msg = "Reminder already exists, updated reminder!\n"
         [REMINDERS.delete(r) for r in existing_reminders]
     REMINDERS.save(reminder)
-    server_name = config['approvedServers'][str(ctx.guild_id)]['name']
-    info(f'Saved reminder {reminder.objective} in {reminder.location} | {ctx.author.name} ({ctx.author.id}) from {server_name} ({ctx.guild_id})')
+    info(f'{ctx_info(ctx)} Saved reminder {reminder.objective} in {reminder.location}')
     await ctx.respond(f"{exist_msg}New reminder set: {reminder.objective} at {reminder.location} {make_dc_time(reminder.time_unlocked)} {reminder.time_unlocked.strftime('%H:%M UTC')}", ephemeral=True)
 
 @bot.slash_command(name="upcoming", description="List upcoming reminders")
+@requires_approved
 async def upcoming(ctx: discord.ApplicationContext):
-    server_data = config['approvedServers'].get(str(ctx.guild_id), {})
-    if not server_data:
-        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent /upcoming")
-        await ctx.respond("This server is not approved to use this command.")
-        return
-    server_name = server_data['name']
+    server_name = ctx.server_data['name']
     info(f'{ctx.author.name} ({ctx.author.id}) from {server_name} sent /upcoming')
-    pending_reminders = list(REMINDERS.find_by({'pingChannelId': server_data['pingChannelId']}, sort=[("time_to_ping", 1)]))
+    pending_reminders = list(REMINDERS.find_by({'pingChannelId': ctx.server_data['pingChannelId']}, sort=[("time_to_ping", 1)]))
     if not pending_reminders:
         await ctx.respond("No upcoming reminders", ephemeral=True)
         return
@@ -179,6 +159,7 @@ async def upcoming(ctx: discord.ApplicationContext):
     await ctx.respond("\n".join(msg))
 
 @bot.slash_command(name="depo", description="Set a timer for leechers on depo time, sends immediately")
+@requires_approved
 async def depo(
     ctx: discord.ApplicationContext,
     color: Option(str, choices=COLOUR_CHOICES, required=True),
@@ -186,20 +167,15 @@ async def depo(
     location: Option(str, required=True),
     minutes: Option(int, required=True, min_value=0, max_value=59),
 ):
-    server_data = config['approvedServers'].get(str(ctx.guild_id), {})
-    if not server_data:
-        cmd = f'/depo {color} {type} {location} {minutes}'
-        warning(f"{ctx.author.name} ({ctx.author.id}) from unapproved server {ctx.guild} ({ctx.guild_id}) sent {cmd}")
-        await ctx.respond("This server is not approved to use this command.")
-        return
     location = best_guess(location) or location
-    info(f'{ctx.author.name} ({ctx.author.id}) from {server_data["name"]} sent /depo {color} {type} {location} {minutes}')
+    info(f'{ctx.author.name} ({ctx.author.id}) from {ctx.server_data["name"]} sent /depo {color} {type} {location} {minutes}')
     utc_depo_time = utc_now() + dt.timedelta(minutes=minutes)
     msg = [
-        f"{server_data['roleMention']} Come leech {color} {type} in {location}", 
+        f"{ctx.server_data['roleMention']} Come leech {color} {type} in {location}", 
         f"Depo {make_dc_time(utc_depo_time)} {utc_depo_time.strftime('%H:%M UTC')}  -- {ctx.author.mention}",
     ]
-    await bot.get_channel(server_data['pingChannelId']).send("\n".join(msg))
+    await ctx.respond("Sending ping...", ephemeral=True)
+    await bot.get_channel(ctx.server_data['pingChannelId']).send("\n".join(msg))
 
 @bot.slash_command(name="delete", description="Delete a reminder")
 async def delete(ctx: discord.ApplicationContext):
@@ -232,6 +208,7 @@ async def delete(ctx: discord.ApplicationContext):
     await ctx.respond(view=view,ephemeral=True)
 
 @bot.slash_command(name="roads", description="Add a an ava portal connection")
+@requires_approved
 async def roads(
     ctx: discord.ApplicationContext,
     from_map: Option(str, required=True),
@@ -244,6 +221,7 @@ async def roads(
     await ctx.respond("Not implemented yet, stay tuned...", ephemeral=True)
 
 @bot.slash_command(name="route", description="Find the shortest route from one location to another")
+@requires_approved
 async def route(ctx: discord.ApplicationContext, start: Option(str, required=True), end: Option(str, required=True)):
     start = best_guess(start)
     end = best_guess(end)
@@ -273,10 +251,15 @@ async def route(ctx: discord.ApplicationContext, start: Option(str, required=Tru
 @bot.slash_command(name="help", description="Learn more about the commands")
 async def help(ctx: discord.ApplicationContext):
     msg = [
-        "User /core, /vortex, or /remind",
-        "**/core <color> <location> <hours> <minutes> <seconds>**",
-        "**/vortex <color> <location> <hours> <minutes> <seconds>**",
-        "**/remind <reminder text> <location> <hours> <minutes> <seconds>**",
+        "Commands: /core, /vortex, /remind, /depo, /upcoming, /delete, /roads, /route",
+        "/core - Set an alarm for a core location",
+        '/vortex - Set an alarm for a vortex location',
+        '/remind - Set a reminder for a location',
+        '/depo - Inform people to leech and set a timer to depo',
+        '/upcoming - List all upcoming events',
+        '/delete - Delete an existing reminder you set',
+        '/roads - Add an ava portal connection',
+        '/route - Find the shortest route from one location to another',
     ]
     await ctx.respond("\n".join(msg), ephemeral=True)
 
