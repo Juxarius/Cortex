@@ -3,6 +3,22 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 import datetime as dt
 from enum import Enum
+from itertools import permutations
+import marisa_trie
+
+class MTrieWrapper:
+    def __init__(self, phrases: list[str]) -> None:
+        self.perm_map = {}
+        phrase_permutations = []
+        for phrase in phrases:
+            for p in permutations(phrase.replace('-', ' ').lower().split()):
+                p = ' '.join(p)
+                self.perm_map[p] = phrase
+                phrase_permutations.append(p)
+        self.trie = marisa_trie.Trie(phrase_permutations)
+    
+    def get(self, s: str) -> list[str]:
+        return list(set(self.perm_map[p] for p in self.trie.keys(s)))
 
 class ReminderStatus(str, Enum):
     UNPINGED = "unpinged"

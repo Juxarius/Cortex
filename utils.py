@@ -7,6 +7,9 @@ import pickle
 import logging
 import functools
 
+from models import MTrieWrapper
+
+
 CONFIG_FILE_PATH = Path(__file__).parent / 'config.json'
 BIN_DUMP_ROOT_PATH = Path('D:/Coding Projects/ao-bin-dumps/')
 
@@ -16,6 +19,8 @@ MAP_NAME2ID_PATH = Path(__file__).parent / 'bin-dumps' / 'map_name2id.pickle'
 PORTALS_EDGE_PATH = Path(__file__).parent / 'bin-dumps' / 'portals_edge.pickle'
 ADDITIONAL_EDGES_PATH = Path(__file__).parent / 'add_portals.json'
 LOCATIONS_WEIGHT_PATH = Path(__file__).parent / 'bin-dumps' / 'locations_weight.pickle'
+N_LETTER_CACHE_PATH = Path(__file__).parent / 'bin-dumps' / 'n_letter_cache.pickle'
+M_TRIE_PATH = Path(__file__).parent / 'bin-dumps' / 'm_trie.pickle'
 
 LOG_FILE_PATH = Path(__file__).parent / 'cortex.log'
 
@@ -183,38 +188,65 @@ def translated_djikstra(map1: str, map2: str, additional_edges: list[str, str] =
         road.append(map_name)
     return road
 
-def get_all_zone_names() -> list[str]:
+def get_all_zone_names() -> set[str]:
     with open(BIN_DUMP_ROOT_PATH / 'cluster' / 'world_asia.xml', encoding='utf-8') as f:
         doc = minidom.parseString(f.read())
     all_clusters = doc.getElementsByTagName('clusters').item(0).getElementsByTagName('cluster')
-    return list(filter(lambda s: s and not contains_digits(s), [cluster.getAttribute('displayname') for cluster in all_clusters]))
+    return set(filter(lambda s: s and not contains_digits(s), [cluster.getAttribute('displayname') for cluster in all_clusters]))
 
 def get_locations_weight() -> list:
-    return {loc: (len(translated_djikstra("Scuttlesink Marsh", loc)) or None) for loc in set(get_all_zone_names())}
+    return {loc: (len(translated_djikstra("Scuttlesink Marsh", loc)) or None) for loc in get_all_zone_names()}
+
+def make_n_letter_cache() -> None:
+    max_n = 3
+    locations = get_all_zone_names()
+    cache_map = {}
+    for loc in locations:
+        split_loc = loc.replace('-', ' ').lower().split()
+        for n in range(1, max_n + 1):
+            key = ''.join(w[:n] for w in split_loc)
+            if key not in cache_map:
+                cache_map[key] = []
+            cache_map[key].append(loc)
+    with open(N_LETTER_CACHE_PATH, 'wb') as f:
+        pickle.dump(cache_map, f)
+
+def make_m_trie() -> None:
+    trie = MTrieWrapper(get_all_zone_names() + [''])
+    with open(M_TRIE_PATH, 'wb') as f:
+        pickle.dump(trie, f)
 
 def make_locations_weight_pickle() -> None:
     lw = get_locations_weight()
     with open(LOCATIONS_WEIGHT_PATH, 'wb') as f:
         pickle.dump(lw, f)
 
+N_LETTER_CACHE = load_pickle(N_LETTER_CACHE_PATH)
+M_TRIE = load_pickle(M_TRIE_PATH)
 LOCATIONS_WEIGHT = load_pickle(LOCATIONS_WEIGHT_PATH)
 
 # AI Behaviour
-def best_guesses(s: str) -> list[str, int]:
-    s = s.lower()
-    guesses = []
-    for lw in LOCATIONS_WEIGHT.items():
-        name = lw[0].lower()
-        if s not in name: continue
-        if lw[1] is None: continue
-        guesses.append(lw)
-    return sorted(guesses, key=lambda x: x[1])
+def best_guesses(s: str, home_map: str=None) -> list[str]:
+    def first_n_letters(s: str) -> list[str]:
+        return N_LETTER_CACHE.get(s, [])
 
-def best_guess(s: str) -> str:
+    def substring_and_proximity(s: str, home_map: str=None) -> list[str]:
+        ss_results = M_TRIE.get(s)
+        if not home_map: return ss_results
+        return sorted(ss_results, key=lambda x: len(translated_djikstra(home_map, x)) or 999)
+        
+    s = s.lower()
+    fnl_results = first_n_letters(s)
+    # Only return if there are exact matches
+    if len(fnl_results) == 1: return fnl_results
+    sap_results = substring_and_proximity(s, home_map)
+    return sap_results + [m for m in fnl_results if m not in sap_results]
+
+def best_guess(s: str, home_map: str=None) -> str:
     try:
-        guesses = best_guesses(s)[0]
+        guesses = best_guesses(s, home_map)[0]
         debug(f'Guessed {guesses} from {s}')
-        return guesses[0]
+        return guesses
     except IndexError:
         debug(f'Could not guess {s}')
         return None
@@ -236,16 +268,36 @@ def datetime_test():
     REMINDERS = Reminders(database=db)
     reminders = list(REMINDERS.find_by({}))
 
+def test_queries():
+    queries = [
+        ("marsh", 'Scuttlesink Marsh'),
+        ("steep", 'Scuttlesink Marsh'),
+        ("hills", 'Scuttlesink Marsh'),
+        ("descent", 'Fort Sterling'),
+        ("precipice", 'Lymhurst'),
+        ('qan', None),
+        ('qialte', None),
+        ('qat', None),
+        ('ters', 'Scuttlesink Marsh'),
+    ]
+    for q, home_map in queries:
+        print(f'{(q, home_map)}: {best_guesses(q, home_map)}')
+
+
 if __name__ == "__main__":
     pass
     # datetime_test()
     # Make files
     # make_map_id_name_pickle()
     # make_portals_edge_pickle()
+    # make_n_letter_cache()
+    # make_m_trie()
     # make_locations_weight_pickle()
     # show(LOCATIONS_WEIGHT)
-    ag = [
-        (MAP_NAME2ID["Shaleheath Steep"], MAP_NAME2ID["Qiient-Al-Nusom"]),
-        (MAP_NAME2ID["Qiient-Al-Nusom"], MAP_NAME2ID["Fort Sterling"]),
-    ]
-    print(translated_djikstra("Scuttlesink Marsh", "Fort Sterling", ag))
+    
+    test_queries()
+    # ag = [
+    #     (MAP_NAME2ID["Shaleheath Steep"], MAP_NAME2ID["Qiient-Al-Nusom"]),
+    #     (MAP_NAME2ID["Qiient-Al-Nusom"], MAP_NAME2ID["Fort Sterling"]),
+    # ]
+    # print(translated_djikstra("Scuttlesink Marsh", "Fort Sterling", ag))

@@ -7,7 +7,7 @@ from pydantic_mongo import PydanticObjectId
 import datetime as dt
 
 from models import *
-from utils import best_guess, est_traveling_time_seconds, translated_djikstra, config, ctx_info, requires_approved
+from utils import est_traveling_time_seconds, translated_djikstra, config, ctx_info, requires_approved, best_guess
 from utils import debug, info, warning, error
 
 # Discord does not allow >25 choices
@@ -57,7 +57,7 @@ async def set_core_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    guess = best_guess(location)
+    guess = best_guess(location, ctx.server_data.get('homeMap', None))
     if not guess:
         warning(f"Failed to guess location for {ctx.guild} ({ctx.guild_id}): {location}")
         await ctx.respond("Unable to guess exact map name. Please retry command", ephemeral=True)
@@ -86,7 +86,7 @@ async def set_vortex_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    guess = best_guess(location)
+    guess = best_guess(location, ctx.server_data.get('homeMap', None))
     if not guess:
         warning(f"Failed to guess location for {ctx.guild} ({ctx.guild_id}): {location}")
         await ctx.respond("Unable to guess exact map name. Please retry command", ephemeral=True)
@@ -115,7 +115,7 @@ async def set_free_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    guess = best_guess(location)
+    guess = best_guess(location, ctx.server_data.get('homeMap', None))
     lead_time = config['reminderLeadTimeSeconds']
     if guess:
         location = guess
@@ -167,7 +167,7 @@ async def depo(
     location: Option(str, required=True),
     minutes: Option(int, required=True, min_value=0, max_value=59),
 ):
-    location = best_guess(location) or location
+    location = best_guess(location, ctx.server_data.get('homeMap', None)) or location
     info(f'{ctx.author.name} ({ctx.author.id}) from {ctx.server_data["name"]} sent /depo {color} {type} {location} {minutes}')
     utc_depo_time = utc_now() + dt.timedelta(minutes=minutes)
     msg = [
@@ -223,8 +223,8 @@ async def roads(
 @bot.slash_command(name="route", description="Find the shortest route from one location to another")
 @requires_approved
 async def route(ctx: discord.ApplicationContext, start: Option(str, required=True), end: Option(str, required=True)):
-    start = best_guess(start)
-    end = best_guess(end)
+    start = best_guess(start, ctx.server_data.get('homeMap', None))
+    end = best_guess(end, ctx.server_data.get('homeMap', None))
     if not start or not end:
         await ctx.respond("Unable to guess exact map names. Please retry command with full map names", ephemeral=True)
         return
