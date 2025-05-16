@@ -11,6 +11,7 @@ class SubstringSearcher:
         # Build a suffix array (sorted list of all suffixes)
         self.suffixes = []
         for idx, s in enumerate(string_list):
+            self.suffixes.append((s.lower(), idx))
             for word in s.replace('-', ' ').lower().split():
                 for i in range(len(word)):
                     self.suffixes.append((word[i:], idx))
