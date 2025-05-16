@@ -3,22 +3,30 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 import datetime as dt
 from enum import Enum
-from itertools import permutations
-import marisa_trie
+from bisect import bisect_left
 
-class MTrieWrapper:
-    def __init__(self, phrases: list[str]) -> None:
-        self.perm_map = {}
-        phrase_permutations = []
-        for phrase in phrases:
-            for p in permutations(phrase.replace('-', ' ').lower().split()):
-                p = ' '.join(p)
-                self.perm_map[p] = phrase
-                phrase_permutations.append(p)
-        self.trie = marisa_trie.Trie(phrase_permutations)
+class SubstringSearcher:
+    def __init__(self, string_list: list[str]) -> None:
+        self.strings = list(string_list)
+        # Build a suffix array (sorted list of all suffixes)
+        self.suffixes = []
+        for idx, s in enumerate(string_list):
+            for word in s.replace('-', ' ').lower().split():
+                for i in range(len(word)):
+                    self.suffixes.append((word[i:], idx))
+        self.suffixes.sort()
     
-    def get(self, s: str) -> list[str]:
-        return list(set(self.perm_map[p] for p in self.trie.keys(s)))
+    def get(self, query: str) -> list[str]:
+        query = query.lower()
+        # Binary search to find the first matching suffix
+        left = bisect_left(self.suffixes, (query, 0))
+        results = set()
+        # Collect all strings that have this prefix in their suffix
+        for i in range(left, len(self.suffixes)):
+            if not self.suffixes[i][0].startswith(query):
+                break
+            results.add(self.strings[self.suffixes[i][1]])
+        return list(results)
 
 class ReminderStatus(str, Enum):
     UNPINGED = "unpinged"
@@ -72,12 +80,20 @@ class Portal(BaseModel):
 class Portals(AbstractRepository[Portal]):
     class Meta:
         collection_name = "portals"
+    
+    def remove_expired(self):
+        return super().get_collection().delete_many({"time_expire": {"$lt": dt.datetime.now().replace(tzinfo=dt.timezone.utc)}})
+
+    def get_all(self):
+        self.remove_expired()
+        return self.find_by({})
 
 if __name__ == '__main__':
     from main import PORTALS
     from utils import MAP_NAME2ID
     p1 = ["Shaleheath Steep", "Qiient-Al-Nusom"]
     p2 = ["Qiient-Al-Nusom", "Fort Sterling"]
+    pp = PORTALS.get_all()
     for p in [p1, p2]:
         PORTALS.save(Portal(
             from_map=p[0], 

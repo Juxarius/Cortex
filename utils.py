@@ -7,7 +7,7 @@ import pickle
 import logging
 import functools
 
-from models import MTrieWrapper
+from models import SubstringSearcher
 
 
 CONFIG_FILE_PATH = Path(__file__).parent / 'config.json'
@@ -18,9 +18,9 @@ MAP_NAME2ID_PATH = Path(__file__).parent / 'bin-dumps' / 'map_name2id.pickle'
 
 PORTALS_EDGE_PATH = Path(__file__).parent / 'bin-dumps' / 'portals_edge.pickle'
 ADDITIONAL_EDGES_PATH = Path(__file__).parent / 'add_portals.json'
-LOCATIONS_WEIGHT_PATH = Path(__file__).parent / 'bin-dumps' / 'locations_weight.pickle'
 N_LETTER_CACHE_PATH = Path(__file__).parent / 'bin-dumps' / 'n_letter_cache.pickle'
 M_TRIE_PATH = Path(__file__).parent / 'bin-dumps' / 'm_trie.pickle'
+SS_SEARCH_CACHE_PATH = Path(__file__).parent / 'bin-dumps' / 'ss_search_cache.pickle'
 
 LOG_FILE_PATH = Path(__file__).parent / 'cortex.log'
 
@@ -168,7 +168,8 @@ def dijkstra(graph: dict, start: str, end: str, additional_graph: dict = None):
             heapq.heappush(queue, (cost + weight, neighbor, path + [node]))
     return None  # No path exists
 
-def translated_djikstra(map1: str, map2: str, additional_edges: list[str, str] = None) -> list[str]:
+@functools.lru_cache
+def translated_djikstra(map1: str, map2: str, additional_edges: tuple[str] = None) -> list[str]:
     additional_graph = {}
     if additional_edges:
         for from_map_id, to_map_id in additional_edges:
@@ -194,9 +195,6 @@ def get_all_zone_names() -> set[str]:
     all_clusters = doc.getElementsByTagName('clusters').item(0).getElementsByTagName('cluster')
     return set(filter(lambda s: s and not contains_digits(s), [cluster.getAttribute('displayname') for cluster in all_clusters]))
 
-def get_locations_weight() -> list:
-    return {loc: (len(translated_djikstra("Scuttlesink Marsh", loc)) or None) for loc in get_all_zone_names()}
-
 def make_n_letter_cache() -> None:
     max_n = 3
     locations = get_all_zone_names()
@@ -211,19 +209,13 @@ def make_n_letter_cache() -> None:
     with open(N_LETTER_CACHE_PATH, 'wb') as f:
         pickle.dump(cache_map, f)
 
-def make_m_trie() -> None:
-    trie = MTrieWrapper(get_all_zone_names() + [''])
-    with open(M_TRIE_PATH, 'wb') as f:
-        pickle.dump(trie, f)
-
-def make_locations_weight_pickle() -> None:
-    lw = get_locations_weight()
-    with open(LOCATIONS_WEIGHT_PATH, 'wb') as f:
-        pickle.dump(lw, f)
+def make_ss_search() -> None:
+    searcher = SubstringSearcher(get_all_zone_names())
+    with open(SS_SEARCH_CACHE_PATH, 'wb') as f:
+        pickle.dump(searcher, f)
 
 N_LETTER_CACHE = load_pickle(N_LETTER_CACHE_PATH)
-M_TRIE = load_pickle(M_TRIE_PATH)
-LOCATIONS_WEIGHT = load_pickle(LOCATIONS_WEIGHT_PATH)
+SS_SEARCHER = load_pickle(SS_SEARCH_CACHE_PATH)
 
 # AI Behaviour
 def best_guesses(s: str, home_map: str=None) -> list[str]:
@@ -231,7 +223,7 @@ def best_guesses(s: str, home_map: str=None) -> list[str]:
         return N_LETTER_CACHE.get(s, [])
 
     def substring_and_proximity(s: str, home_map: str=None) -> list[str]:
-        ss_results = M_TRIE.get(s)
+        ss_results = SS_SEARCHER.get(s)
         if not home_map: return ss_results
         return sorted(ss_results, key=lambda x: len(translated_djikstra(home_map, x)) or 999)
         
@@ -251,11 +243,9 @@ def best_guess(s: str, home_map: str=None) -> str:
         debug(f'Could not guess {s}')
         return None
 
-def est_traveling_time_seconds(m: str) -> int:
-    distance = LOCATIONS_WEIGHT[m]
-    if distance is None:
-        return None
-    return (distance - 1) * config['secondsPerMap']
+def est_traveling_time_seconds(m: str, home_map: str=None) -> int:
+    if not home_map: return 0
+    return (len(translated_djikstra(home_map, m)) - 1) * config['secondsPerMap']
 
 def show(obj) -> None:
     import json
@@ -270,18 +260,24 @@ def datetime_test():
 
 def test_queries():
     queries = [
-        ("marsh", 'Scuttlesink Marsh'),
-        ("steep", 'Scuttlesink Marsh'),
-        ("hills", 'Scuttlesink Marsh'),
-        ("descent", 'Fort Sterling'),
-        ("precipice", 'Lymhurst'),
-        ('qan', None),
-        ('qialte', None),
-        ('qat', None),
-        ('ters', 'Scuttlesink Marsh'),
+        ("marsh", 'Scuttlesink Marsh', 'Scuttlesink Marsh'),
+        ("steep", 'Scuttlesink Marsh', 'Shaleheath Steep'),
+        ("hills", 'Scuttlesink Marsh', 'Shaleheath Hills'),
+        ("descent", 'Fort Sterling', 'Whitebank Descent'),
+        ("precipice", 'Lymhurst', 'Watchwood Precipice'),
+        ('qan', None, 'Qiient-Al-Nusom'),
+        ('qialte', None, 'Qiient-Al-Tersas'),
+        ('qat', None, 'Quaent-Al-Tersis'),
     ]
-    for q, home_map in queries:
-        print(f'{(q, home_map)}: {best_guesses(q, home_map)}')
+    import time
+    iterations = 500
+    start = time.time()
+    for _ in range(iterations):
+        for q, home_map, _ in queries:
+            best_guess(q, home_map)
+
+    time_taken_seconds = (time.time() - start)
+    print(f'Took {time_taken_seconds:.6}s, avg {(time_taken_seconds / len(queries) / iterations):.6}s')
 
 
 if __name__ == "__main__":
@@ -293,8 +289,8 @@ if __name__ == "__main__":
     # make_n_letter_cache()
     # make_m_trie()
     # make_locations_weight_pickle()
-    # show(LOCATIONS_WEIGHT)
     
+    # make_ss_search()
     test_queries()
     # ag = [
     #     (MAP_NAME2ID["Shaleheath Steep"], MAP_NAME2ID["Qiient-Al-Nusom"]),

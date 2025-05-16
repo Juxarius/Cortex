@@ -57,13 +57,14 @@ async def set_core_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    guess = best_guess(location, ctx.server_data.get('homeMap', None))
+    home_map = ctx.server_data.get('homeMap', None)
+    guess = best_guess(location, home_map)
     if not guess:
         warning(f"Failed to guess location for {ctx.guild} ({ctx.guild_id}): {location}")
         await ctx.respond("Unable to guess exact map name. Please retry command", ephemeral=True)
         return
     location = guess
-    lead_time = int(est_traveling_time_seconds(location)) + config['reminderLeadTimeSeconds']
+    lead_time = int(est_traveling_time_seconds(location, home_map)) + config['reminderLeadTimeSeconds']
     reminder = Reminder(
         objective=f"{color} Core",
         location=location,
@@ -86,13 +87,14 @@ async def set_vortex_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    guess = best_guess(location, ctx.server_data.get('homeMap', None))
+    home_map = ctx.server_data.get('homeMap', None)
+    guess = best_guess(location, home_map)
     if not guess:
         warning(f"Failed to guess location for {ctx.guild} ({ctx.guild_id}): {location}")
         await ctx.respond("Unable to guess exact map name. Please retry command", ephemeral=True)
         return
     location = guess
-    lead_time = int(est_traveling_time_seconds(location)) + config['reminderLeadTimeSeconds']
+    lead_time = int(est_traveling_time_seconds(location, home_map)) + config['reminderLeadTimeSeconds']
     reminder = Reminder(
         objective=f"{color} Vortex",
         location=location,
@@ -115,11 +117,12 @@ async def set_free_reminder(
     minutes: Option(int, required=True, min_value=0, max_value=59),
     seconds: Option(int, default=0, min_value=0, max_value=59),
 ):
-    guess = best_guess(location, ctx.server_data.get('homeMap', None))
+    home_map = ctx.server_data.get('homeMap', None)
+    guess = best_guess(location, home_map)
     lead_time = config['reminderLeadTimeSeconds']
     if guess:
         location = guess
-        lead_time += int(est_traveling_time_seconds(location))
+        lead_time += int(est_traveling_time_seconds(location, home_map))
     reminder = Reminder(
         objective=reminder_text,
         location=location,
@@ -229,7 +232,7 @@ async def route(ctx: discord.ApplicationContext, start: Option(str, required=Tru
         await ctx.respond("Unable to guess exact map names. Please retry command with full map names", ephemeral=True)
         return
     portals: list[Portal] = list(PORTALS.find_by({}))
-    roads = [(portal.from_map_id, portal.to_map_id) for portal in portals]
+    roads = tuple((portal.from_map_id, portal.to_map_id) for portal in portals)
     route = translated_djikstra(start, end, roads)
 
     def find_portal_time(map1: str, map2: str) -> dt.datetime:
