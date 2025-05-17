@@ -6,6 +6,8 @@ from itertools import permutations
 import pickle
 import logging
 import functools
+import os
+from datetime import datetime as dt
 
 from models import SubstringSearcher
 
@@ -29,6 +31,11 @@ with open(CONFIG_FILE_PATH, 'r') as f:
     config = json.load(f)
 
 # Logging
+def rotate_logs() -> None:
+    if os.path.exists(LOG_FILE_PATH):
+        os.rename(LOG_FILE_PATH, f'{LOG_FILE_PATH}.{dt.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+
+rotate_logs()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 handler = logging.FileHandler(LOG_FILE_PATH, 'a', 'utf-8')
