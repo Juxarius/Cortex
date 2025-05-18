@@ -13,7 +13,6 @@ BIN_DUMP_DIR = Path(__file__).parent.parent / 'bin-dumps'
 ZONE_PATH = BIN_DUMP_DIR / 'zones.pickle'
 
 PORTALS_EDGE_PATH = BIN_DUMP_DIR / 'portals_edge.pickle'
-ADDITIONAL_EDGES_PATH = BIN_DUMP_DIR / 'add_portals.json'
 
 N_LETTER_CACHE_PATH = BIN_DUMP_DIR / 'n_letter_cache.pickle'
 SS_SEARCH_CACHE_PATH = BIN_DUMP_DIR / 'ss_search_cache.pickle'
