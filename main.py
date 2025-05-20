@@ -5,6 +5,7 @@ from discord.ui import View, Select
 from pymongo import MongoClient
 from pydantic_mongo import PydanticObjectId
 import datetime as dt
+from itertools import combinations
 
 from models.dbmodels import *
 from utils.context import ctx_info, requires_approved
@@ -183,9 +184,9 @@ async def upcoming(ctx: discord.ApplicationContext):
     notable_routes = []
     upcoming_config = ctx.server_data.get('upcomingConfig', None)
     if upcoming_config:
-        for zone in upcoming_config['notableMaps']:
-            route = translated_djikstra(zone, ctx.server_data['homeMap'], list(PORTALS.get_all()))
-            if not route or len(route)-1 > upcoming_config['maxMapsOut']: continue
+        for zone_pairs in combinations(set(upcoming_config['notableMaps'] + [upcoming_config['homeMap']]), 2):
+            route = translated_djikstra(zone_pairs[0], zone_pairs[1], list(PORTALS.get_all()), upcoming_config['maxMapsOut'])
+            if not route: continue
             notable_routes.append(route)
     if notable_routes:
         msg.append(f"\n**Notable roads from {ctx.server_data['homeMap']}:**")

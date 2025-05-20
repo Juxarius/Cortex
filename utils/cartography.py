@@ -5,7 +5,7 @@ import heapq
 from utils.bindata import ZONES, PORTALS_EDGE, N_LETTER_CACHE, SS_SEARCHER
 from models.dbmodels import Portal
 
-def dijkstra(graph: dict, start: str, end: str, additional_graph: dict = None):
+def dijkstra(graph: dict, start: str, end: str, additional_graph: dict = None, max_distance: int=9999):
     if additional_graph is None:
         additional_graph = {}
     starting_nodes = [key for key in graph if key[1] == start] + [key for key in additional_graph if key[1] == start]
@@ -19,6 +19,8 @@ def dijkstra(graph: dict, start: str, end: str, additional_graph: dict = None):
         if node in visited:
             continue
         visited.add(node)
+        if len(path) > max_distance:
+            continue
         for neighbor, weight in graph.get(node, {}).items():
             heapq.heappush(queue, (cost + weight, neighbor, path + [node]))
         for neighbor, weight in additional_graph.get(node, {}).items():
@@ -26,7 +28,7 @@ def dijkstra(graph: dict, start: str, end: str, additional_graph: dict = None):
     return None  # No path exists
 
 # @functools.lru_cache
-def translated_djikstra(map1: str, map2: str, roads: list[Portal]=None) -> list[str]:
+def translated_djikstra(map1: str, map2: str, roads: list[Portal]=None, max_distance: int=9999) -> list[str]:
     if roads is None:
         roads = []
     additional_graph = {}
@@ -36,7 +38,7 @@ def translated_djikstra(map1: str, map2: str, roads: list[Portal]=None) -> list[
         if portal2 not in additional_graph: additional_graph[portal2] = {}
         additional_graph[portal1][portal2] = 0
         additional_graph[portal2][portal1] = 0
-    path = dijkstra(PORTALS_EDGE, ZONES.get_map_id(map1), ZONES.get_map_id(map2), additional_graph)
+    path = dijkstra(PORTALS_EDGE, ZONES.get_map_id(map1), ZONES.get_map_id(map2), additional_graph, max_distance)
     if not path:
         return []
     road = []
