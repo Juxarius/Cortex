@@ -227,26 +227,26 @@ async def delete(ctx: discord.ApplicationContext):
         await ctx.respond("No reminders/portals available to you...", ephemeral=True)
         return
     view = View()
-    options = [
+    reminder_options = [
         discord.SelectOption(label=f"{reminder.objective} in {reminder.location}", value=f'reminder@{str(reminder.id)}') 
     for reminder in user_reminders]
-    options += [
-        discord.SelectOption(label=f"{portal.from_map} -> {portal.to_map}", value=f'portal@{str(portal.id)}') 
+    portal_options = [
+        discord.SelectOption(label=f"{portal.from_map} -> {portal.to_map} ({portal.time_expire.strftime('%H:%M UTC')})", value=f'portal@{str(portal.id)}') 
     for portal in user_portals]
     select = Select(
         placeholder="Choose object to delete...",
-        options=options,
+        options=reminder_options + portal_options,
     )
     async def callback(interaction: discord.Interaction):
         obj_type, id_str = interaction.data['values'][0].split('@')
         id = PydanticObjectId(id_str)
         if obj_type == 'portal':
             portal = PORTALS.find_one_by_id(id)
-            obj_str = f"{portal.from_map} -> {portal.to_map}"
+            obj_str = [p for p in portal_options if p.value == interaction.data['values'][0]][0].label
             delete_result = PORTALS.delete(portal)
         elif obj_type == 'reminder':
             reminder = REMINDERS.find_one_by_id(id)
-            obj_str = f"{reminder.objective} in {reminder.location}"
+            obj_str = [r for r in reminder_options if r.value == interaction.data['values'][0]][0].label
             delete_result = REMINDERS.delete(reminder)
         else:
             error(f"{ctx_info(ctx)} Unknown /delete callback {obj_type}@{id_str}")
