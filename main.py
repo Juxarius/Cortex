@@ -184,7 +184,7 @@ async def upcoming(ctx: discord.ApplicationContext):
     notable_routes = []
     upcoming_config = ctx.server_data.get('upcomingConfig', None)
     if upcoming_config:
-        for zone_pairs in combinations(set(upcoming_config['notableMaps'] + [upcoming_config['homeMap']]), 2):
+        for zone_pairs in combinations(set(upcoming_config['notableMaps'] + [ctx.server_data['homeMap']]), 2):
             route = translated_djikstra(zone_pairs[0], zone_pairs[1], list(PORTALS.get_all()), upcoming_config['maxMapsOut'])
             if not route: continue
             notable_routes.append(route)
